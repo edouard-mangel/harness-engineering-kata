@@ -6,40 +6,41 @@ namespace Kata\Warehouse;
 
 class WarehouseDeskApp
 {
-    /** @var array<string, Product> */
-    private array $products = [];
-    /** @var array<string, Order> */
-    private array $orders = [];
-    /** @var array<string, Reservation> */
-    private array $reservations = [];
+    private array $stockBySku = [];
+    private array $reservedBySku = [];
+    private array $priceBySku = [];
+    private array $orderStatus = [];
+    private array $orderSku = [];
+    private array $orderQty = [];
     private array $eventLog = [];
     private float $cashBalance = 0.0;
     private int $nextOrderNumber = 0;
-    private int $nextReservationNumber = 2001;
-    private ?\Closure $clockFn = null;
 
     public function seedData(): void
     {
-        $this->products = [
-            'PEN-BLACK' => new Product(1.5,  40),
-            'PEN-BLUE'  => new Product(1.6,  25),
-            'NOTE-A5'   => new Product(4.0,  15),
-            'STAPLER'   => new Product(12.0,  4),
+        $this->stockBySku = [
+            'PEN-BLACK' => 40,
+            'PEN-BLUE'  => 25,
+            'NOTE-A5'   => 15,
+            'STAPLER'   => 4,
         ];
+
+        $this->reservedBySku = [
+            'PEN-BLACK' => 0,
+            'PEN-BLUE'  => 0,
+            'NOTE-A5'   => 0,
+            'STAPLER'   => 0,
+        ];
+
+        $this->priceBySku = [
+            'PEN-BLACK' => 1.5,
+            'PEN-BLUE'  => 1.6,
+            'NOTE-A5'   => 4.0,
+            'STAPLER'   => 12.0,
+        ];
+
         $this->cashBalance = 300.0;
         $this->nextOrderNumber = 1001;
-        $this->nextReservationNumber = 2001;
-        $this->reservations = [];
-    }
-
-    public function getEventLog(): array
-    {
-        return $this->eventLog;
-    }
-
-    public function setClock(\Closure $fn): void
-    {
-        $this->clockFn = $fn;
     }
 
     public function runDemoDay(): void
@@ -55,6 +56,7 @@ class WarehouseDeskApp
             'COUNT;NOTE-A5',
             'DUMP',
         ];
+
         foreach ($commands as $command) {
             $this->processLine($command);
         }
@@ -63,174 +65,95 @@ class WarehouseDeskApp
 
     public function processLine(string $line): void
     {
-        $this->expireReservations();
         $parts = explode(';', $line);
-        match ($parts[0]) {
-            'RESERVE' => $this->handleReserve($parts),
-            'CONFIRM' => $this->handleConfirm($parts[1]),
-            'RELEASE' => $this->handleRelease($parts[1]),
-            'RECV'    => $this->handleRecv($parts),
-            'SELL'    => $this->handleSell($parts),
-            'CANCEL'  => $this->handleCancel($parts[1]),
-            'COUNT'   => $this->handleCount($parts[1]),
-            'DUMP'    => $this->handleDump(),
-            default   => $this->log("unknown command: $line"),
-        };
-    }
+        $type = $parts[0];
 
-    private function handleReserve(array $parts): void
-    {
-        $customer = $parts[1];
-        $sku      = $parts[2];
-        $qty      = $this->parseInt($parts[3]);
-        $minutes  = $this->parseInt($parts[4]);
-        $product  = $this->products[$sku] ?? null;
-        if ($product === null || $product->available() < $qty) {
-            $this->log("reservation failed for $customer sku=$sku qty=$qty insufficient stock");
+        if ($type === 'RECV') {
+            $sku = $parts[1];
+            $qty = $this->parseInt($parts[2]);
+            $unitCost = $this->parseDouble($parts[3]);
+            $current = $this->stockBySku[$sku] ?? 0;
+            $this->stockBySku[$sku] = $current + $qty;
+            $this->cashBalance -= $qty * $unitCost;
+            $this->eventLog[] = 'received ' . $qty . ' of ' . $sku . ' at ' . $unitCost;
             return;
         }
-        $id = $this->nextReservationId();
-        $this->reservations[$id] = new Reservation($customer, $sku, $qty, $this->now() + $minutes * 60);
-        $product->reserve($qty);
-        $this->log("reserved $id for $customer sku=$sku qty=$qty expires={$minutes}min");
-    }
 
-    private function handleConfirm(string $id): void
-    {
-        $res = $this->reservations[$id] ?? null;
-        if ($res === null) {
-            $this->log("cannot confirm $id because it does not exist");
-            return;
-        }
-        if (!$res->isActive()) {
-            $this->log("cannot confirm $id because it is {$res->status->value}");
-            return;
-        }
-        $product = $this->products[$res->sku];
-        $orderId = $this->nextOrderId();
-        $this->orders[$orderId] = new Order($res->sku, $res->qty, OrderStatus::Shipped);
-        $product->ship($res->qty);
-        $product->releaseReserved($res->qty);
-        $orderTotal = $product->price * $res->qty;
-        $this->cashBalance += $orderTotal;
-        $res->status = ReservationStatus::Confirmed;
-        $amount   = $this->javaDouble($orderTotal);
-        $customer = $res->customer;
-        $this->log("confirmed reservation $id order $orderId shipped to $customer amount=$amount");
-    }
+        if ($type === 'SELL') {
+            $customer = $parts[1];
+            $sku = $parts[2];
+            $qty = $this->parseInt($parts[3]);
+            $orderId = 'O' . $this->nextOrderNumber;
+            $this->nextOrderNumber++;
+            $this->orderSku[$orderId] = $sku;
+            $this->orderQty[$orderId] = $qty;
 
-    private function handleRelease(string $id): void
-    {
-        $res = $this->reservations[$id] ?? null;
-        if ($res === null) {
-            $this->log("cannot release $id because it does not exist");
-            return;
-        }
-        if (!$res->isActive()) {
-            $this->log("cannot release $id because it is {$res->status->value}");
-            return;
-        }
-        $this->products[$res->sku]->releaseReserved($res->qty);
-        $res->status = ReservationStatus::Released;
-        $this->log("released reservation $id");
-    }
-
-    private function handleRecv(array $parts): void
-    {
-        $sku      = $parts[1];
-        $qty      = $this->parseInt($parts[2]);
-        $unitCost = $this->parseDouble($parts[3]);
-        $this->products[$sku] ??= new Product(0.0, 0);
-        $this->products[$sku]->receive($qty);
-        $this->cashBalance -= $qty * $unitCost;
-        $this->log("received $qty of $sku at $unitCost");
-    }
-
-    private function handleSell(array $parts): void
-    {
-        $customer = $parts[1];
-        $sku      = $parts[2];
-        $qty      = $this->parseInt($parts[3]);
-        $orderId  = $this->nextOrderId();
-        $product  = $this->products[$sku] ?? null;
-        if ($product === null || $product->available() < $qty) {
-            $this->orders[$orderId] = new Order($sku, $qty, OrderStatus::Backorder);
-            $this->log("order $orderId backordered for $customer sku=$sku qty=$qty");
-            return;
-        }
-        $product->ship($qty);
-        $orderTotal = $product->price * $qty;
-        $this->cashBalance += $orderTotal;
-        $this->orders[$orderId] = new Order($sku, $qty, OrderStatus::Shipped);
-        $amount = $this->javaDouble($orderTotal);
-        $this->log("order $orderId shipped to $customer amount=$amount");
-    }
-
-    private function handleCancel(string $orderId): void
-    {
-        $order = $this->orders[$orderId] ?? null;
-        if ($order === null) {
-            $this->log("cannot cancel $orderId because it does not exist");
-            return;
-        }
-        if ($order->status === OrderStatus::Backorder) {
-            $order->status = OrderStatus::Cancelled;
-            $this->log("cancelled backorder $orderId");
-            return;
-        }
-        if ($order->status === OrderStatus::Shipped) {
-            $product = $this->products[$order->sku];
-            $product->restock($order->qty);
-            $this->cashBalance -= $product->price * $order->qty;
-            $order->status = OrderStatus::CancelledAfterShip;
-            $this->log("cancelled shipped order $orderId with restock");
-            return;
-        }
-        $this->log("order $orderId could not be cancelled from state {$order->status->value}");
-    }
-
-    private function handleCount(string $sku): void
-    {
-        $product   = $this->products[$sku] ?? null;
-        $onHand    = $product?->onHand    ?? 0;
-        $reserved  = $product?->reserved  ?? 0;
-        $available = $onHand - $reserved;
-        $this->log("count $sku onHand=$onHand reserved=$reserved available=$available");
-    }
-
-    private function handleDump(): void
-    {
-        $stocks              = array_map(fn(Product $p)     => $p->onHand,       $this->products);
-        $reserved            = array_map(fn(Product $p)     => $p->reserved,     $this->products);
-        $reservationStatuses = array_map(fn(Reservation $r) => $r->status->value, $this->reservations);
-        $orderStatuses       = array_map(fn(Order $o)       => $o->status->value, $this->orders);
-        echo "---- dump ----\n";
-        echo 'stock='        . $this->javaMap($stocks)              . "\n";
-        echo 'reserved='     . $this->javaMap($reserved)            . "\n";
-        echo 'reservations=' . $this->javaMap($reservationStatuses) . "\n";
-        echo 'orders='       . $this->javaMap($orderStatuses)       . "\n";
-        echo 'cashBalance='  . $this->javaDouble($this->cashBalance) . "\n";
-    }
-
-    private function expireReservations(): void
-    {
-        $now = $this->now();
-        foreach ($this->reservations as $id => $reservation) {
-            if ($reservation->isExpiredAt($now)) {
-                $this->products[$reservation->sku]->releaseReserved($reservation->qty);
-                $reservation->status = ReservationStatus::Expired;
-                $this->log("reservation $id expired");
+            $onHand = $this->stockBySku[$sku] ?? 0;
+            $reserved = $this->reservedBySku[$sku] ?? 0;
+            $available = $onHand - $reserved;
+            if ($available < $qty) {
+                $this->orderStatus[$orderId] = 'BACKORDER';
+                $this->eventLog[] = 'order ' . $orderId . ' backordered for ' . $customer . ' sku=' . $sku . ' qty=' . $qty;
+            } else {
+                $this->stockBySku[$sku] = $onHand - $qty;
+                $unitPrice = $this->priceBySku[$sku] ?? 0.0;
+                $orderTotal = $unitPrice * $qty;
+                $this->cashBalance += $orderTotal;
+                $this->orderStatus[$orderId] = 'SHIPPED';
+                $this->eventLog[] = 'order ' . $orderId . ' shipped to ' . $customer . ' amount=' . $this->javaDouble($orderTotal);
             }
+            return;
         }
-    }
 
-    private function nextOrderId(): string       { return 'O' . $this->nextOrderNumber++; }
-    private function nextReservationId(): string { return 'R' . $this->nextReservationNumber++; }
-    private function now(): int                  { return $this->clockFn ? ($this->clockFn)() : time(); }
+        if ($type === 'CANCEL') {
+            $orderId = $parts[1];
+            $status = $this->orderStatus[$orderId] ?? null;
+            if ($status === null) {
+                $this->eventLog[] = 'cannot cancel ' . $orderId . ' because it does not exist';
+                return;
+            }
 
-    private function log(string $event): void
-    {
-        $this->eventLog[] = $event;
+            if ($status === 'BACKORDER') {
+                $this->orderStatus[$orderId] = 'CANCELLED';
+                $this->eventLog[] = 'cancelled backorder ' . $orderId;
+                return;
+            }
+
+            if ($status === 'SHIPPED') {
+                $sku = $this->orderSku[$orderId];
+                $qty = $this->orderQty[$orderId] ?? 0;
+                $current = $this->stockBySku[$sku] ?? 0;
+                $this->stockBySku[$sku] = $current + $qty;
+                $unitPrice = $this->priceBySku[$sku] ?? 0.0;
+                $this->cashBalance -= $unitPrice * $qty;
+                $this->orderStatus[$orderId] = 'CANCELLED_AFTER_SHIP';
+                $this->eventLog[] = 'cancelled shipped order ' . $orderId . ' with restock';
+                return;
+            }
+
+            $this->eventLog[] = 'order ' . $orderId . ' could not be cancelled from state ' . $status;
+            return;
+        }
+
+        if ($type === 'COUNT') {
+            $sku = $parts[1];
+            $onHand = $this->stockBySku[$sku] ?? 0;
+            $reserved = $this->reservedBySku[$sku] ?? 0;
+            $available = $onHand - $reserved;
+            $this->eventLog[] = 'count ' . $sku . ' onHand=' . $onHand . ' reserved=' . $reserved . ' available=' . $available;
+            return;
+        }
+
+        if ($type === 'DUMP') {
+            echo "---- dump ----\n";
+            echo 'stock=' . $this->javaMap($this->stockBySku) . "\n";
+            echo 'reserved=' . $this->javaMap($this->reservedBySku) . "\n";
+            echo 'orders=' . $this->javaMap($this->orderStatus) . "\n";
+            echo 'cashBalance=' . $this->javaDouble($this->cashBalance) . "\n";
+            return;
+        }
+
+        $this->eventLog[] = 'unknown command: ' . $line;
     }
 
     private function parseInt(string $value): int
@@ -254,31 +177,44 @@ class WarehouseDeskApp
     {
         $entries = [];
         foreach ($map as $k => $v) {
-            $entries[] = "$k=$v";
+            $entries[] = $k . '=' . $v;
         }
         return '{' . implode(', ', $entries) . '}';
     }
 
     public function printEndOfDayReport(): void
     {
-        $shipped = $backorder = $cancelled = 0;
-        foreach ($this->orders as $order) {
-            if ($order->status === OrderStatus::Shipped)       { $shipped++; }
-            elseif ($order->status === OrderStatus::Backorder) { $backorder++; }
-            elseif ($order->status->isCancelled())             { $cancelled++; }
+        $shipped = 0;
+        $backorder = 0;
+        $cancelled = 0;
+        foreach ($this->orderStatus as $status) {
+            if ($status === 'SHIPPED') {
+                $shipped++;
+            } elseif ($status === 'BACKORDER') {
+                $backorder++;
+            } elseif (str_starts_with($status, 'CANCELLED')) {
+                $cancelled++;
+            }
         }
-        $lowStock = array_keys(array_filter($this->products, fn(Product $p) => $p->onHand < 5));
+
+        $lowStock = [];
+        foreach ($this->stockBySku as $sku => $qty) {
+            if ($qty < 5) {
+                $lowStock[] = $sku;
+            }
+        }
+
         echo "\n";
         echo "==== end of day ====\n";
-        echo 'orders shipped: '     . $shipped   . "\n";
+        echo 'orders shipped: ' . $shipped . "\n";
         echo 'orders backordered: ' . $backorder . "\n";
-        echo 'orders cancelled: '   . $cancelled . "\n";
-        echo 'cash balance: '       . number_format($this->cashBalance, 2) . "\n";
-        echo 'low stock skus: ['    . implode(', ', $lowStock)             . "]\n";
+        echo 'orders cancelled: ' . $cancelled . "\n";
+        echo 'cash balance: ' . number_format($this->cashBalance, 2) . "\n";
+        echo 'low stock skus: [' . implode(', ', $lowStock) . "]\n";
         echo "\n";
         echo "events:\n";
         foreach ($this->eventLog as $event) {
-            echo " - $event\n";
+            echo ' - ' . $event . "\n";
         }
     }
 }
