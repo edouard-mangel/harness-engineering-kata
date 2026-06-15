@@ -100,7 +100,7 @@ class WarehouseDeskApp
                 $orderTotal = $unitPrice * $qty;
                 $this->cashBalance += $orderTotal;
                 $this->orderStatus[$orderId] = 'SHIPPED';
-                $this->eventLog[] = 'order ' . $orderId . ' shipped to ' . $customer . ' amount=' . $orderTotal;
+                $this->eventLog[] = 'order ' . $orderId . ' shipped to ' . $customer . ' amount=' . $this->javaDouble($orderTotal);
             }
             return;
         }
@@ -146,10 +146,10 @@ class WarehouseDeskApp
 
         if ($type === 'DUMP') {
             echo "---- dump ----\n";
-            echo 'stock=' . json_encode($this->stockBySku) . "\n";
-            echo 'reserved=' . json_encode($this->reservedBySku) . "\n";
-            echo 'orders=' . json_encode($this->orderStatus) . "\n";
-            echo 'cashBalance=' . $this->cashBalance . "\n";
+            echo 'stock=' . $this->javaMap($this->stockBySku) . "\n";
+            echo 'reserved=' . $this->javaMap($this->reservedBySku) . "\n";
+            echo 'orders=' . $this->javaMap($this->orderStatus) . "\n";
+            echo 'cashBalance=' . $this->javaDouble($this->cashBalance) . "\n";
             return;
         }
 
@@ -164,6 +164,22 @@ class WarehouseDeskApp
     private function parseDouble(string $value): float
     {
         return (float) trim($value);
+    }
+
+    // Matches Java's double-to-string: whole numbers print as "15.0", not "15"
+    private function javaDouble(float $n): string
+    {
+        return (floor($n) === $n) ? number_format($n, 1, '.', '') : (string) $n;
+    }
+
+    // Matches Java's HashMap.toString(): {key=value, key=value}
+    private function javaMap(array $map): string
+    {
+        $entries = [];
+        foreach ($map as $k => $v) {
+            $entries[] = $k . '=' . $v;
+        }
+        return '{' . implode(', ', $entries) . '}';
     }
 
     public function printEndOfDayReport(): void
