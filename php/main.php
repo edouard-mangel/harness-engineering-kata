@@ -1,0 +1,11 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Kata\Warehouse\WarehouseDeskApp;
+
+$app = new WarehouseDeskApp();
+$app->seedData();
+$app->runDemoDay();
