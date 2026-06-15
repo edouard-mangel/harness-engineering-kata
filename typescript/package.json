@@ -2,10 +2,16 @@
   "name": "warehouse-desk-kata",
   "description": "Warehouse Desk Kata - TypeScript implementation",
   "scripts": {
-    "start": "tsx main.ts"
+    "start": "tsx main.ts",
+    "test": "vitest run",
+    "lint": "eslint src/"
   },
   "devDependencies": {
     "tsx": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2",
+    "eslint": "^8",
+    "@typescript-eslint/parser": "^7",
+    "@typescript-eslint/eslint-plugin": "^7"
   }
 }
