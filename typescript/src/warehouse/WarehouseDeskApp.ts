@@ -69,7 +69,7 @@ export class WarehouseDeskApp {
         const orderTotal = unitPrice * qty;
         this.cashBalance += orderTotal;
         this.orderStatus[orderId] = 'SHIPPED';
-        this.eventLog.push(`order ${orderId} shipped to ${customer} amount=${orderTotal}`);
+        this.eventLog.push(`order ${orderId} shipped to ${customer} amount=${this.javaDouble(orderTotal)}`);
       }
       return;
     }
@@ -114,10 +114,10 @@ export class WarehouseDeskApp {
 
     if (type === 'DUMP') {
       console.log('---- dump ----');
-      console.log(`stock=${JSON.stringify(this.stockBySku)}`);
-      console.log(`reserved=${JSON.stringify(this.reservedBySku)}`);
-      console.log(`orders=${JSON.stringify(this.orderStatus)}`);
-      console.log(`cashBalance=${this.cashBalance}`);
+      console.log(`stock=${this.javaMap(this.stockBySku)}`);
+      console.log(`reserved=${this.javaMap(this.reservedBySku)}`);
+      console.log(`orders=${this.javaMap(this.orderStatus)}`);
+      console.log(`cashBalance=${this.javaDouble(this.cashBalance)}`);
       return;
     }
 
@@ -130,6 +130,17 @@ export class WarehouseDeskApp {
 
   private parseFloatVal(value: string): number {
     return parseFloat(value.trim());
+  }
+
+  // Matches Java's double-to-string: whole numbers print as "15.0", not "15"
+  private javaDouble(n: number): string {
+    return Number.isInteger(n) ? `${n}.0` : `${n}`;
+  }
+
+  // Matches Java's HashMap.toString(): {key=value, key=value}
+  private javaMap(obj: Record<string, unknown>): string {
+    const entries = Object.entries(obj).map(([k, v]) => `${k}=${v}`).join(', ');
+    return `{${entries}}`;
   }
 
   printEndOfDayReport(): void {
