@@ -1,0 +1,11 @@
+{
+  "name": "warehouse-desk-kata",
+  "description": "Warehouse Desk Kata - TypeScript implementation",
+  "scripts": {
+    "start": "tsx main.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}
