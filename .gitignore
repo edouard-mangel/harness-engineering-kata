@@ -4,3 +4,5 @@ target/
 .nwave/
 php/.phpunit.result.cache
 php/setup.sh
+.claude/worktrees/
+php/phpunit.xml
