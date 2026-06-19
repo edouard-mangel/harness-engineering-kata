@@ -1,0 +1,9 @@
+{
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "complexity": ["error", 21],
+    "max-lines-per-function": ["error", { "max": 100, "skipBlankLines": true, "skipComments": true }],
+    "max-params": ["error", 4]
+  }
+}
