@@ -21,6 +21,12 @@ Installez les outils de vérification de qualité (nécessaires pour les étapes
 # Python
 pip install -r python/requirements-dev.txt
 
+# PHP
+cd php && composer install && cd ..
+
+# TypeScript
+cd typescript && pnpm install && cd ..
+
 # Java — ajoutez le plugin checkstyle à pom.xml (voir "Outils qualité par langage" ci-dessous)
 ```
 
@@ -72,6 +78,8 @@ Les étapes 6 et 7 introduisent des changements de configuration (fichiers de co
   cp harness/step-6/settings.json .claude/settings.json
   cp harness/step-6/python/.flake8 python/.flake8
   cp harness/step-6/java/checkstyle.xml java/checkstyle.xml
+  cp harness/step-6/php/phpmd.xml php/phpmd.xml
+  cp harness/step-6/typescript/.eslintrc.json typescript/.eslintrc.json
   mkdir -p .claude/hooks
   cp harness/step-6/.claude/hooks/*.sh .claude/hooks/
   chmod +x .claude/hooks/*.sh
@@ -147,6 +155,14 @@ pnpm start
 ### Python
 
 Configuré dans `harness/step-6/.claude/hooks/check-quality.sh`. Vérifications : longueur de fonction (30), complexité cognitive (10), nombres magiques, suremploi de constantes chaînes, attributs d'instance de classe (6), longueur de fichier (150 lignes), nombre maximum de paramètres (4). La config flake8 se trouve dans `harness/step-6/python/.flake8`. Les deux sont copiés en place lors de l'activation de l'étape 6 (voir instructions étape 6 ci-dessus).
+
+### PHP
+
+Utilise [PHPMD](https://phpmd.org/) (PHP Mess Detector). Vérifications : complexité cyclomatique (10), longueur de méthode (30 lignes), longueur de classe (150 lignes), attributs de classe (6), nombre de paramètres (4). Le jeu de règles se trouve dans `harness/step-6/php/phpmd.xml` — copié dans `php/phpmd.xml` lors de l'activation de l'étape 6. Nécessite `composer install` dans `php/`.
+
+### TypeScript
+
+Utilise [ESLint](https://eslint.org/) avec `@typescript-eslint`. Vérifications : complexité cyclomatique (10), longueur de fonction (30 lignes), longueur de fichier (150 lignes), nombre de paramètres (4). La config se trouve dans `harness/step-6/typescript/.eslintrc.json` — copiée dans `typescript/.eslintrc.json` lors de l'activation de l'étape 6. Nécessite `pnpm install` dans `typescript/`.
 
 ### Java
 
